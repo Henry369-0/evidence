@@ -2,16 +2,16 @@
 title: Business Analysis Workflow
 ---
 
-# Business Analysis Workflow
-
 This page is a small, synthetic example of turning operational data into a decision-ready analysis. The data is intentionally fictional so the workflow can be reused without exposing private business data.
 
 ## 1. Define the metric
 
 For this example, fulfillment rate is defined as completed orders divided by requested orders. The denominator is kept visible in the query so that the metric is auditable.
 
+Delivery time and cost per order both cover completed orders. Costs are fictional USD amounts for this example. The fictional daily averages below are converted into teaching totals by multiplying by completed orders. These totals are constructed for this example; they are not recovered raw records. Roll-ups divide summed totals by summed completed orders, rather than averaging daily averages.
+
 ~~~sql daily_operations
-with daily_operations as (
+with synthetic_daily_averages as (
     select *
     from (
         values
@@ -30,6 +30,12 @@ with daily_operations as (
         avg_delivery_minutes,
         cost_per_order
     )
+), daily_operations as (
+    select
+        *,
+        avg_delivery_minutes * completed_orders as total_delivery_minutes,
+        cost_per_order * completed_orders as total_cost
+    from synthetic_daily_averages
 )
 select
     service_day,
@@ -39,7 +45,9 @@ select
     completed_orders,
     completed_orders::double / nullif(requested_orders, 0) as fulfillment_rate,
     avg_delivery_minutes,
-    cost_per_order
+    cost_per_order,
+    total_delivery_minutes,
+    total_cost
 from daily_operations
 order by service_day, city_group
 ~~~
@@ -51,18 +59,18 @@ select
     sum(requested_orders) as requested_orders,
     sum(completed_orders) as completed_orders,
     sum(completed_orders)::double / nullif(sum(requested_orders), 0) as fulfillment_rate,
-    avg(avg_delivery_minutes) as avg_delivery_minutes,
-    avg(cost_per_order) as avg_cost_per_order
+    sum(total_delivery_minutes)::double / nullif(sum(completed_orders), 0) as avg_delivery_minutes,
+    sum(total_cost)::double / nullif(sum(completed_orders), 0) as avg_cost_per_order
 from ${daily_operations}
 ~~~
 
 <BigValue data={summary} value=fulfillment_rate title="Fulfillment rate" fmt=pct0 />
 <BigValue data={summary} value=avg_delivery_minutes title="Average delivery time" />
-<BigValue data={summary} value=avg_cost_per_order title="Average cost per order" fmt=usd />
+<BigValue data={summary} value=avg_cost_per_order title="Cost per completed order" fmt=usd2 />
 
 ## 3. Diagnose the structure
 
-The summary is not enough to explain the result. The next cut separates city group and weather condition so that a recommendation can be traced back to an observable pattern.
+The summary is not enough to explain the result. The next cut groups by weather condition so that a recommendation can be traced back to an observable pattern. City mix is not controlled in this cut.
 
 ~~~sql by_weather
 select
@@ -70,8 +78,8 @@ select
     sum(requested_orders) as requested_orders,
     sum(completed_orders) as completed_orders,
     sum(completed_orders)::double / nullif(sum(requested_orders), 0) as fulfillment_rate,
-    avg(avg_delivery_minutes) as avg_delivery_minutes,
-    avg(cost_per_order) as avg_cost_per_order
+    sum(total_delivery_minutes)::double / nullif(sum(completed_orders), 0) as avg_delivery_minutes,
+    sum(total_cost)::double / nullif(sum(completed_orders), 0) as avg_cost_per_order
 from ${daily_operations}
 group by weather
 order by fulfillment_rate
