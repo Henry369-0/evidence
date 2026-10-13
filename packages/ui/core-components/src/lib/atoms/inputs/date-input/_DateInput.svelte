@@ -1,6 +1,7 @@
 <script>
 	import {
 		CalendarDate,
+		parseDate,
 		DateFormatter,
 		getLocalTimeZone,
 		startOfMonth,
@@ -193,7 +194,7 @@
 	}
 
 	function setPlaceholderDefault(d) {
-		placeholder = d;
+		if (!placeholder) placeholder = d;
 	}
 
 	let selectedPreset;
@@ -219,6 +220,7 @@
 		selectedPreset = targetPreset;
 		if (range) {
 			selectedDateInput = targetPreset.range;
+			placeholder = targetPreset.range.start;
 		}
 	}
 
@@ -238,21 +240,68 @@
 		extraDayCalendarEnd = YYYYMMDDToCalendar(extraDayEndString);
 	}
 
-	function updateDateRange(start, end) {
-		if (selectedPreset || selectedDateInput) return;
+	let initialized = false;
 
-		if (!range && typeof defaultValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(defaultValue)) {
-			selectedDateInput = YYYYMMDDToCalendar(defaultValue);
+	function updateDateRange(start, end, max, availablePresets) {
+		if (range && selectedPreset) {
+			const currentPreset = availablePresets.find(
+				(preset) =>
+					lowerCaseNoSpaceString(preset.label) === lowerCaseNoSpaceString(selectedPreset.label)
+			);
+			if (currentPreset) {
+				// Calendar-period presets may extend beyond loaded data bounds.
+				// Keep their intent and recalculate them when those bounds change.
+				selectedPreset = currentPreset;
+				selectedDateInput = currentPreset.range;
+				placeholder = currentPreset.range.start;
+				return;
+			}
+			selectedPreset = undefined;
+		}
+		const inBounds = (date) =>
+			typeof date?.compare === 'function' && date.compare(start) >= 0 && date.compare(max) <= 0;
+		if (range) {
+			if (
+				inBounds(selectedDateInput?.start) &&
+				(!selectedDateInput.end ||
+					(inBounds(selectedDateInput.end) &&
+						selectedDateInput.start.compare(selectedDateInput.end) <= 0))
+			)
+				return;
+		} else if (inBounds(selectedDateInput)) {
 			return;
 		}
 
+		let defaultDate;
+		if (
+			!range &&
+			!initialized &&
+			typeof defaultValue === 'string' &&
+			/^\d{4}-\d{2}-\d{2}$/.test(defaultValue)
+		) {
+			try {
+				defaultDate = parseDate(defaultValue);
+			} catch {
+				// Invalid calendar dates use the same legal fallback as an unset default.
+			}
+		}
+		initialized = true;
+		selectedPreset = undefined;
+
 		if (range) {
 			selectedDateInput = { start, end };
+			placeholder = start;
 		} else {
-			selectedDateInput = start;
+			selectedDateInput = inBounds(defaultDate) ? defaultDate : start;
+			placeholder = selectedDateInput;
 		}
 	}
-	$: updateDateRange(calendarStart, calendarEnd);
+	$: updateDateRange(
+		calendarStart,
+		calendarEnd,
+		range ? extraDayCalendarEnd : calendarEnd,
+		presets
+	);
 
 	$: onSelectedDateInputChange(selectedDateInput);
 </script>
@@ -322,7 +371,7 @@
 		<Popover.Content class="w-auto select-none p-0" align="start">
 			{#if range}
 				<RangeCalendar
-					bind:selectedDateInput
+					bind:value={selectedDateInput}
 					bind:placeholder
 					initialFocus
 					numberOfMonths={1}
@@ -335,9 +384,10 @@
 				/>
 			{:else}
 				<Calendar
-					bind:selectedDateInput
+					bind:value={selectedDateInput}
 					bind:placeholder
 					initialFocus
+					preventDeselect
 					numberOfMonths={1}
 					onValueChange={(value) => {
 						selectedPreset = undefined;

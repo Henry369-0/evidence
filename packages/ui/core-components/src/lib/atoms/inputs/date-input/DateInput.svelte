@@ -5,7 +5,6 @@
 <script>
 	import DateInput from './_DateInput.svelte';
 	// import { Query } from '@evidence-dev/sdk/usql';
-	import { getLocalTimeZone } from '@internationalized/date';
 	import HiddenInPrint from '../shared/HiddenInPrint.svelte';
 	import { page } from '$app/stores';
 	import QueryLoad from '$lib/atoms/query-load/QueryLoad.svelte';
@@ -91,12 +90,12 @@
 	function onSelectedDateInputChange(selectedDateInput) {
 		if (selectedDateInput && (selectedDateInput.start || selectedDateInput.end) && range) {
 			$inputs[name] = {
-				start: dateToYYYYMMDD(selectedDateInput.start?.toDate(getLocalTimeZone()) ?? new Date(0)),
-				end: dateToYYYYMMDD(selectedDateInput.end?.toDate(getLocalTimeZone()) ?? new Date())
+				start: selectedDateInput.start?.toString() ?? startString,
+				end: selectedDateInput.end?.toString() ?? endString
 			};
 		} else if (selectedDateInput && selectedDateInput && !range) {
 			$inputs[name] = {
-				value: dateToYYYYMMDD(selectedDateInput.toDate(getLocalTimeZone()) ?? new Date(0))
+				value: selectedDateInput.toString()
 			};
 		}
 	}
